@@ -1,0 +1,12 @@
+<Solution>
+  <Folder Name="/k8s/" />
+  <Folder Name="/src/">
+    <Project Path="src/FCG.Notifications.Application/FCG.Notifications.Application.csproj" />
+    <Project Path="src/FCG.Notifications.Domain/FCG.Notifications.Domain.csproj" />
+    <Project Path="src/FCG.Notifications.Infrastructure/FCG.Notifications.Infrastructure.csproj" />
+    <Project Path="src/FCG.Notifications.Worker/FCG.Notifications.Worker.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/FCG.Notifications.Tests/FCG.Notifications.Tests.csproj" />
+  </Folder>
+</Solution>

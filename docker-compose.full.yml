@@ -1,0 +1,51 @@
+services:
+  notifications-worker:
+    image: brnmatos/fcg-notifications-worker:1.0.0
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: fcg-notifications-worker
+    restart: on-failure
+
+    environment:
+      DOTNET_ENVIRONMENT: Development
+
+      RabbitMq__Host: rabbitmq
+      RabbitMq__Port: "5672"
+      RabbitMq__VirtualHost: "/"
+      RabbitMq__Username: rabbitmquser
+      RabbitMq__Password: "rbmq2587!@"
+      RabbitMq__UserCreatedQueue: notifications-user-created
+      RabbitMq__PaymentProcessedQueue: notifications-payment-processed
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: fcg-rabbitmq
+    restart: unless-stopped
+
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbitmquser
+      RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
+
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "rabbitmq-diagnostics",
+          "-q",
+          "ping"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
