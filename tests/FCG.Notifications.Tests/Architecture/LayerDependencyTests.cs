@@ -10,7 +10,7 @@ public class LayerDependencyTests
     private const string DomainNamespace = "FCG.Notifications.Domain";
     private const string ApplicationNamespace = "FCG.Notifications.Application";
     private const string InfrastructureNamespace = "FCG.Notifications.Infrastructure";
-    private const string WorkerNamespace = "FCG.Notifications.Worker";
+    private const string FunctionsNamespace = "FCG.Notifications.Functions";
 
     [Fact(DisplayName = "Domain não deve depender de Application")]
     [Trait("Categoria", "Architecture")]
@@ -38,14 +38,14 @@ public class LayerDependencyTests
         Assert.True(result.IsSuccessful);
     }
 
-    [Fact(DisplayName = "Domain não deve depender de Worker")]
+    [Fact(DisplayName = "Domain não deve depender de Functions")]
     [Trait("Categoria", "Architecture")]
-    public void Domain_Should_Not_Depend_On_Worker()
+    public void Domain_Should_Not_Depend_On_Functions()
     {
         var result = Types
             .InAssembly(typeof(EmailAddress).Assembly)
             .ShouldNot()
-            .HaveDependencyOn(WorkerNamespace)
+            .HaveDependencyOn(FunctionsNamespace)
             .GetResult();
 
         Assert.True(result.IsSuccessful);
@@ -64,52 +64,52 @@ public class LayerDependencyTests
         Assert.True(result.IsSuccessful);
     }
 
-    [Fact(DisplayName = "Application não deve depender de Worker")]
+    [Fact(DisplayName = "Application não deve depender de Functions")]
     [Trait("Categoria", "Architecture")]
-    public void Application_Should_Not_Depend_On_Worker()
+    public void Application_Should_Not_Depend_On_Functions()
     {
         var result = Types
             .InAssembly(typeof(SendWelcomeEmailCommand).Assembly)
             .ShouldNot()
-            .HaveDependencyOn(WorkerNamespace)
+            .HaveDependencyOn(FunctionsNamespace)
             .GetResult();
 
         Assert.True(result.IsSuccessful);
     }
 
-    [Fact(DisplayName = "Infrastructure não deve depender de Worker")]
+    [Fact(DisplayName = "Infrastructure não deve depender de Functions")]
     [Trait("Categoria", "Architecture")]
-    public void Infrastructure_Should_Not_Depend_On_Worker()
+    public void Infrastructure_Should_Not_Depend_On_Functions()
     {
         var result = Types
             .InAssembly(typeof(ConsoleEmailSender).Assembly)
             .ShouldNot()
-            .HaveDependencyOn(WorkerNamespace)
+            .HaveDependencyOn(FunctionsNamespace)
             .GetResult();
 
         Assert.True(result.IsSuccessful);
     }
 
-    [Fact(DisplayName = "Worker não deve ser referenciado pelas camadas internas")]
+    [Fact(DisplayName = "Functions não deve ser referenciado pelas camadas internas")]
     [Trait("Categoria", "Architecture")]
-    public void Worker_Should_Be_Outer_Layer()
+    public void Functions_Should_Be_Outer_Layer()
     {
         var domain = Types
             .InAssembly(typeof(EmailAddress).Assembly)
             .ShouldNot()
-            .HaveDependencyOn(WorkerNamespace)
+            .HaveDependencyOn(FunctionsNamespace)
             .GetResult();
 
         var application = Types
             .InAssembly(typeof(SendWelcomeEmailCommand).Assembly)
             .ShouldNot()
-            .HaveDependencyOn(WorkerNamespace)
+            .HaveDependencyOn(FunctionsNamespace)
             .GetResult();
 
         var infrastructure = Types
             .InAssembly(typeof(ConsoleEmailSender).Assembly)
             .ShouldNot()
-            .HaveDependencyOn(WorkerNamespace)
+            .HaveDependencyOn(FunctionsNamespace)
             .GetResult();
 
         Assert.True(domain.IsSuccessful);

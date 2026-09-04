@@ -1,36 +1,36 @@
 services:
-  notifications-worker:
-    image: brnmatos/fcg-notifications-worker:1.0.0
 
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # ============================================================
+  # AZURITE
+  # Azure Storage local usado pelo runtime do Azure Functions
+  # ============================================================
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: fcg-azurite
+    restart: unless-stopped
 
-    container_name: fcg-notifications-worker
-    restart: on-failure
+    command: >
+      azurite
+      --blobHost 0.0.0.0
+      --queueHost 0.0.0.0
+      --tableHost 0.0.0.0
 
-    environment:
-      DOTNET_ENVIRONMENT: Development
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
 
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Port: "5672"
-      RabbitMq__VirtualHost: "/"
-      RabbitMq__Username: rabbitmquser
-      RabbitMq__Password: "rbmq2587!@"
-      RabbitMq__UserCreatedQueue: notifications-user-created
-      RabbitMq__PaymentProcessedQueue: notifications-payment-processed
 
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-
+  # ============================================================
+  # RABBITMQ
+  # ============================================================
   rabbitmq:
     image: rabbitmq:3-management
     container_name: fcg-rabbitmq
     restart: unless-stopped
 
     environment:
-      RABBITMQ_DEFAULT_USER: rabbitmquser
+      RABBITMQ_DEFAULT_USER: "rabbitmquser"
       RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
 
     ports:
@@ -40,12 +40,117 @@ services:
     healthcheck:
       test:
         [
-          "CMD",
-          "rabbitmq-diagnostics",
-          "-q",
-          "ping"
+          "CMD-SHELL",
+          "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"
         ]
       interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      timeout: 10s
+      retries: 15
+      start_period: 30s
+
+
+  # ============================================================
+  # RABBITMQ INIT
+  # Cria exchanges, filas e bindings da Notifications
+  # ============================================================
+  rabbitmq-init:
+    image: curlimages/curl:latest
+    container_name: fcg-rabbitmq-init
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Aguardando RabbitMQ Management..."
+
+        until curl -f -u 'rabbitmquser:rbmq2587!@' \
+          http://rabbitmq:15672/api/overview > /dev/null 2>&1
+        do
+          echo "RabbitMQ Management ainda não está pronto..."
+          sleep 2
+        done
+
+        echo "RabbitMQ Management disponível."
+
+        echo "Criando exchanges..."
+
+        curl -f -u 'rabbitmquser:rbmq2587!@' \
+          -H 'content-type: application/json' \
+          -X PUT \
+          http://rabbitmq:15672/api/exchanges/%2F/FCG.BuildingBlocks.Events%3AUserCreatedEvent \
+          -d '{"type":"fanout","durable":true,"auto_delete":false,"internal":false,"arguments":{}}'
+
+        curl -f -u 'rabbitmquser:rbmq2587!@' \
+          -H 'content-type: application/json' \
+          -X PUT \
+          http://rabbitmq:15672/api/exchanges/%2F/FCG.BuildingBlocks.Events%3APaymentProcessedEvent \
+          -d '{"type":"fanout","durable":true,"auto_delete":false,"internal":false,"arguments":{}}'
+
+        echo "Criando filas..."
+
+        curl -f -u 'rabbitmquser:rbmq2587!@' \
+          -H 'content-type: application/json' \
+          -X PUT \
+          http://rabbitmq:15672/api/queues/%2F/notifications-user-created \
+          -d '{"durable":true,"auto_delete":false,"arguments":{}}'
+
+        curl -f -u 'rabbitmquser:rbmq2587!@' \
+          -H 'content-type: application/json' \
+          -X PUT \
+          http://rabbitmq:15672/api/queues/%2F/notifications-payment-processed \
+          -d '{"durable":true,"auto_delete":false,"arguments":{}}'
+
+        echo "Criando bindings..."
+
+        curl -f -u 'rabbitmquser:rbmq2587!@' \
+          -H 'content-type: application/json' \
+          -X POST \
+          http://rabbitmq:15672/api/bindings/%2F/e/FCG.BuildingBlocks.Events%3AUserCreatedEvent/q/notifications-user-created \
+          -d '{"routing_key":"","arguments":{}}'
+
+        curl -f -u 'rabbitmquser:rbmq2587!@' \
+          -H 'content-type: application/json' \
+          -X POST \
+          http://rabbitmq:15672/api/bindings/%2F/e/FCG.BuildingBlocks.Events%3APaymentProcessedEvent/q/notifications-payment-processed \
+          -d '{"routing_key":"","arguments":{}}'
+
+        echo "Topologia RabbitMQ criada com sucesso."
+
+
+  # ============================================================
+  # AZURE FUNCTIONS - NOTIFICATIONS
+  # ============================================================
+  notifications-functions:
+    image: brnmatos/fcg-notifications-functions:1.0.0
+
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    container_name: fcg-notifications-functions
+    restart: on-failure
+
+    environment:
+      FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
+
+      AzureFunctionsJobHost__Logging__Console__IsEnabled: "true"
+
+      # RabbitMQ Trigger
+      RabbitMqConnection: "amqp://rabbitmquser:rbmq2587%21%40@rabbitmq:5672/"
+
+      # Azure Storage local via Azurite
+      AzureWebJobsStorage: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;"
+
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+
+      rabbitmq-init:
+        condition: service_completed_successfully
+
+      azurite:
+        condition: service_started
