@@ -28,8 +28,4 @@
     <ProjectReference Include="..\..\src\FCG.Notifications.Infrastructure\FCG.Notifications.Infrastructure.csproj" />
   </ItemGroup>
 
-  <ItemGroup>
-    <Folder Include="Worker\Consumers\" />
-  </ItemGroup>
-
 </Project>

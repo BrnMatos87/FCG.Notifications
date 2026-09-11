@@ -2,7 +2,8 @@
 using FCG.BuildingBlocks.Events;
 using FCG.Notifications.Application.Abstractions.Commands;
 using FCG.Notifications.Application.Commands.Notifications;
-using FCG.Notifications.Functions.Messaging;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
@@ -22,36 +23,43 @@ public class UserCreatedFunction
     }
 
     [Function("UserCreatedFunction")]
-    public async Task RunAsync(
-        [RabbitMQTrigger(
-            "notifications-user-created",
-            ConnectionStringSetting = "RabbitMqConnection")]
-        string message,
+    public async Task<IActionResult> RunAsync(
+        [HttpTrigger(
+            AuthorizationLevel.Function,
+            "post",
+            Route = "notifications/user-created")]
+        HttpRequest request,
         FunctionContext context)
     {
-        var options = new JsonSerializerOptions
+        UserCreatedEvent? userCreatedEvent;
+
+        try
         {
-            PropertyNameCaseInsensitive = true
-        };
+            userCreatedEvent = await request.ReadFromJsonAsync<UserCreatedEvent>(
+                context.CancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is BadHttpRequestException or JsonException)
+        {
+            _logger.LogWarning(exception, "Payload de notificação de usuário inválido.");
+            return new BadRequestObjectResult("O corpo da requisição contém JSON inválido.");
+        }
 
-        var envelope =
-            JsonSerializer.Deserialize<
-                MassTransitEnvelope<UserCreatedEvent>>(
-                message,
-                options);
-
-        var userCreatedEvent = envelope?.Message;
-
-        if (userCreatedEvent is null)
+        if (userCreatedEvent is null ||
+            userCreatedEvent.UserId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(userCreatedEvent.Name) ||
+            string.IsNullOrWhiteSpace(userCreatedEvent.Email) ||
+            userCreatedEvent.CorrelationId == Guid.Empty)
         {
             _logger.LogWarning(
-                "Não foi possível extrair UserCreatedEvent do envelope MassTransit.");
+                "Payload de notificação de usuário não contém todos os campos obrigatórios.");
 
-            return;
+            return new BadRequestObjectResult(
+                "UserId, Name, Email e CorrelationId são obrigatórios.");
         }
 
         _logger.LogInformation(
-            "UserCreatedEvent recebido. UserId: {UserId}, Email: {Email}, CorrelationId: {CorrelationId}",
+            "Notificação de usuário recebida. UserId: {UserId}, Email: {Email}, CorrelationId: {CorrelationId}",
             userCreatedEvent.UserId,
             userCreatedEvent.Email,
             userCreatedEvent.CorrelationId);
@@ -65,5 +73,7 @@ public class UserCreatedFunction
                 CorrelationId = userCreatedEvent.CorrelationId
             },
             context.CancellationToken);
+
+        return new NoContentResult();
     }
 }

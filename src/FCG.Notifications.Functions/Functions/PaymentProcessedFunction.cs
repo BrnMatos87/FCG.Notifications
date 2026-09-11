@@ -3,7 +3,8 @@ using FCG.BuildingBlocks.Enums;
 using FCG.BuildingBlocks.Events;
 using FCG.Notifications.Application.Abstractions.Commands;
 using FCG.Notifications.Application.Commands.Notifications;
-using FCG.Notifications.Functions.Messaging;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 
@@ -23,40 +24,46 @@ public class PaymentProcessedFunction
     }
 
     [Function("PaymentProcessedFunction")]
-    public async Task RunAsync(
-        [RabbitMQTrigger(
-            "notifications-payment-processed",
-            ConnectionStringSetting = "RabbitMqConnection")]
-        string message,
+    public async Task<IActionResult> RunAsync(
+        [HttpTrigger(
+            AuthorizationLevel.Function,
+            "post",
+            Route = "notifications/payment-processed")]
+        HttpRequest request,
         FunctionContext context)
     {
-        _logger.LogInformation(
-            "Mensagem bruta recebida: {Message}",
-            message);
+        PaymentProcessedEvent? paymentProcessedEvent;
 
-        var options = new JsonSerializerOptions
+        try
         {
-            PropertyNameCaseInsensitive = true
-        };
+            paymentProcessedEvent = await request.ReadFromJsonAsync<PaymentProcessedEvent>(
+                context.CancellationToken);
+        }
+        catch (Exception exception) when (
+            exception is BadHttpRequestException or JsonException)
+        {
+            _logger.LogWarning(exception, "Payload de notificação de pagamento inválido.");
+            return new BadRequestObjectResult("O corpo da requisição contém JSON inválido.");
+        }
 
-        var envelope =
-            JsonSerializer.Deserialize<
-                MassTransitEnvelope<PaymentProcessedEvent>>(
-                message,
-                options);
-
-        var paymentProcessedEvent = envelope?.Message;
-
-        if (paymentProcessedEvent is null)
+        if (paymentProcessedEvent is null ||
+            paymentProcessedEvent.OrderId == Guid.Empty ||
+            paymentProcessedEvent.UserId == Guid.Empty ||
+            paymentProcessedEvent.GameId == Guid.Empty ||
+            string.IsNullOrWhiteSpace(paymentProcessedEvent.UserEmail) ||
+            string.IsNullOrWhiteSpace(paymentProcessedEvent.GameTitle) ||
+            paymentProcessedEvent.CorrelationId == Guid.Empty ||
+            !Enum.IsDefined(paymentProcessedEvent.Status))
         {
             _logger.LogWarning(
-                "Não foi possível extrair PaymentProcessedEvent do envelope MassTransit.");
+                "Payload de notificação de pagamento não contém todos os campos obrigatórios.");
 
-            return;
+            return new BadRequestObjectResult(
+                "OrderId, UserId, GameId, UserEmail, GameTitle, Status e CorrelationId são obrigatórios.");
         }
 
         _logger.LogInformation(
-            "PaymentProcessedEvent recebido. OrderId: {OrderId}, UserId: {UserId}, Status: {Status}, CorrelationId: {CorrelationId}",
+            "Notificação de pagamento recebida. OrderId: {OrderId}, UserId: {UserId}, Status: {Status}, CorrelationId: {CorrelationId}",
             paymentProcessedEvent.OrderId,
             paymentProcessedEvent.UserId,
             paymentProcessedEvent.Status,
@@ -70,8 +77,14 @@ public class PaymentProcessedFunction
                 paymentProcessedEvent.Status,
                 paymentProcessedEvent.CorrelationId);
 
-            return;
+            return new NoContentResult();
         }
+
+        _logger.LogInformation(
+            "Pagamento foi aprovado. Notificação será enviada. OrderId: {OrderId}, Status: {Status}, CorrelationId: {CorrelationId}",
+            paymentProcessedEvent.OrderId,
+            paymentProcessedEvent.Status,
+            paymentProcessedEvent.CorrelationId);
 
         await _handler.HandleAsync(
             new SendPurchaseConfirmationEmailCommand
@@ -85,5 +98,7 @@ public class PaymentProcessedFunction
                 CorrelationId = paymentProcessedEvent.CorrelationId
             },
             context.CancellationToken);
+
+        return new NoContentResult();
     }
 }

@@ -4,6 +4,8 @@ using FCG.BuildingBlocks.Events;
 using FCG.Notifications.Application.Abstractions.Commands;
 using FCG.Notifications.Application.Commands.Notifications;
 using FCG.Notifications.Functions.Functions;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
 using Microsoft.Extensions.Logging;
 using Moq;
@@ -35,11 +37,13 @@ public class PaymentProcessedFunctionTests
             CorrelationId = Guid.NewGuid()
         };
 
-        var payload = JsonSerializer.Serialize(new { Message = message });
+        var request = CreateRequest(message);
 
         var function = new PaymentProcessedFunction(handler.Object, logger.Object);
 
-        await function.RunAsync(payload, context.Object);
+        var result = await function.RunAsync(request, context.Object);
+
+        Assert.IsType<NoContentResult>(result);
 
         handler.Verify(x => x.HandleAsync(
                 It.Is<SendPurchaseConfirmationEmailCommand>(c =>
@@ -71,17 +75,19 @@ public class PaymentProcessedFunctionTests
             GameId = Guid.NewGuid(),
             UserEmail = "bruno@email.com",
             GameTitle = "Cyber Game",
-            Price = 99.90m,
+            Price = 99m,
             Status = PaymentStatus.Rejected,
             ProcessedAt = DateTime.UtcNow,
             CorrelationId = Guid.NewGuid()
         };
 
-        var payload = JsonSerializer.Serialize(new { Message = message });
+        var request = CreateRequest(message);
 
         var function = new PaymentProcessedFunction(handler.Object, logger.Object);
 
-        await function.RunAsync(payload, context.Object);
+        var result = await function.RunAsync(request, context.Object);
+
+        Assert.IsType<NoContentResult>(result);
 
         handler.Verify(x => x.HandleAsync(
                 It.IsAny<SendPurchaseConfirmationEmailCommand>(),
@@ -101,11 +107,21 @@ public class PaymentProcessedFunctionTests
 
         var function = new PaymentProcessedFunction(handler.Object, logger.Object);
 
-        await function.RunAsync("{}", context.Object);
+        var result = await function.RunAsync(CreateRequest(new { }), context.Object);
+
+        Assert.IsType<BadRequestObjectResult>(result);
 
         handler.Verify(x => x.HandleAsync(
                 It.IsAny<SendPurchaseConfirmationEmailCommand>(),
                 It.IsAny<CancellationToken>()),
             Times.Never);
+    }
+
+    private static HttpRequest CreateRequest<T>(T body)
+    {
+        var context = new DefaultHttpContext();
+        context.Request.ContentType = "application/json";
+        context.Request.Body = new MemoryStream(JsonSerializer.SerializeToUtf8Bytes(body));
+        return context.Request;
     }
 }

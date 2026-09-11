@@ -22,106 +22,6 @@ services:
 
 
   # ============================================================
-  # RABBITMQ
-  # ============================================================
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: fcg-rabbitmq
-    restart: unless-stopped
-
-    environment:
-      RABBITMQ_DEFAULT_USER: "rabbitmquser"
-      RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
-
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "rabbitmq-diagnostics -q check_running && rabbitmq-diagnostics -q check_local_alarms"
-        ]
-      interval: 10s
-      timeout: 10s
-      retries: 15
-      start_period: 30s
-
-
-  # ============================================================
-  # RABBITMQ INIT
-  # Cria exchanges, filas e bindings da Notifications
-  # ============================================================
-  rabbitmq-init:
-    image: curlimages/curl:latest
-    container_name: fcg-rabbitmq-init
-
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-
-    entrypoint:
-      - /bin/sh
-      - -c
-      - |
-        echo "Aguardando RabbitMQ Management..."
-
-        until curl -f -u 'rabbitmquser:rbmq2587!@' \
-          http://rabbitmq:15672/api/overview > /dev/null 2>&1
-        do
-          echo "RabbitMQ Management ainda não está pronto..."
-          sleep 2
-        done
-
-        echo "RabbitMQ Management disponível."
-
-        echo "Criando exchanges..."
-
-        curl -f -u 'rabbitmquser:rbmq2587!@' \
-          -H 'content-type: application/json' \
-          -X PUT \
-          http://rabbitmq:15672/api/exchanges/%2F/FCG.BuildingBlocks.Events%3AUserCreatedEvent \
-          -d '{"type":"fanout","durable":true,"auto_delete":false,"internal":false,"arguments":{}}'
-
-        curl -f -u 'rabbitmquser:rbmq2587!@' \
-          -H 'content-type: application/json' \
-          -X PUT \
-          http://rabbitmq:15672/api/exchanges/%2F/FCG.BuildingBlocks.Events%3APaymentProcessedEvent \
-          -d '{"type":"fanout","durable":true,"auto_delete":false,"internal":false,"arguments":{}}'
-
-        echo "Criando filas..."
-
-        curl -f -u 'rabbitmquser:rbmq2587!@' \
-          -H 'content-type: application/json' \
-          -X PUT \
-          http://rabbitmq:15672/api/queues/%2F/notifications-user-created \
-          -d '{"durable":true,"auto_delete":false,"arguments":{}}'
-
-        curl -f -u 'rabbitmquser:rbmq2587!@' \
-          -H 'content-type: application/json' \
-          -X PUT \
-          http://rabbitmq:15672/api/queues/%2F/notifications-payment-processed \
-          -d '{"durable":true,"auto_delete":false,"arguments":{}}'
-
-        echo "Criando bindings..."
-
-        curl -f -u 'rabbitmquser:rbmq2587!@' \
-          -H 'content-type: application/json' \
-          -X POST \
-          http://rabbitmq:15672/api/bindings/%2F/e/FCG.BuildingBlocks.Events%3AUserCreatedEvent/q/notifications-user-created \
-          -d '{"routing_key":"","arguments":{}}'
-
-        curl -f -u 'rabbitmquser:rbmq2587!@' \
-          -H 'content-type: application/json' \
-          -X POST \
-          http://rabbitmq:15672/api/bindings/%2F/e/FCG.BuildingBlocks.Events%3APaymentProcessedEvent/q/notifications-payment-processed \
-          -d '{"routing_key":"","arguments":{}}'
-
-        echo "Topologia RabbitMQ criada com sucesso."
-
-
-  # ============================================================
   # AZURE FUNCTIONS - NOTIFICATIONS
   # ============================================================
   notifications-functions:
@@ -134,23 +34,17 @@ services:
     container_name: fcg-notifications-functions
     restart: on-failure
 
+    ports:
+      - "7071:80"
+
     environment:
       FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
 
       AzureFunctionsJobHost__Logging__Console__IsEnabled: "true"
 
-      # RabbitMQ Trigger
-      RabbitMqConnection: "amqp://rabbitmquser:rbmq2587%21%40@rabbitmq:5672/"
-
       # Azure Storage local via Azurite
       AzureWebJobsStorage: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;"
 
     depends_on:
-      rabbitmq:
-        condition: service_healthy
-
-      rabbitmq-init:
-        condition: service_completed_successfully
-
       azurite:
         condition: service_started

@@ -443,3 +443,15 @@ FodyWeavers.xsd
 
 # Permite versionar o exemplo
 !.env.example
+
+# Terraform local state and generated plans
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+crash.log
+crash.*.log
+
+# Keep provider dependency lock files versioned
+!**/.terraform.lock.hcl
