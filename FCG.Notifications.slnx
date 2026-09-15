@@ -1,5 +1,9 @@
 <Solution>
-  <Folder Name="/k8s/" />
+  <Folder Name="/k8s/">
+    <File Path="k8s/configmap.yaml" />
+    <File Path="k8s/namespace.yaml" />
+    <File Path="k8s/worker-deployment.yaml" />
+  </Folder>
   <Folder Name="/src/">
     <Project Path="src/FCG.Notifications.Application/FCG.Notifications.Application.csproj" />
     <Project Path="src/FCG.Notifications.Domain/FCG.Notifications.Domain.csproj" />

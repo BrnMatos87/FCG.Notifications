@@ -30,5 +30,9 @@ resource "azurerm_function_app_flex_consumption" "notifications" {
     minimum_tls_version                    = "1.2"
   }
 
+  app_settings = {
+    OTEL_TRACES_SAMPLER = "always_on"
+  }
+
   tags = local.common_tags
 }
