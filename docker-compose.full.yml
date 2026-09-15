@@ -1,51 +1,50 @@
 services:
-  notifications-worker:
-    image: brnmatos/fcg-notifications-worker:1.0.0
+
+  # ============================================================
+  # AZURITE
+  # Azure Storage local usado pelo runtime do Azure Functions
+  # ============================================================
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite
+    container_name: fcg-azurite
+    restart: unless-stopped
+
+    command: >
+      azurite
+      --blobHost 0.0.0.0
+      --queueHost 0.0.0.0
+      --tableHost 0.0.0.0
+
+    ports:
+      - "10000:10000"
+      - "10001:10001"
+      - "10002:10002"
+
+
+  # ============================================================
+  # AZURE FUNCTIONS - NOTIFICATIONS
+  # ============================================================
+  notifications-functions:
+    image: brnmatos/fcg-notifications-functions:1.0.0
 
     build:
       context: .
       dockerfile: Dockerfile
 
-    container_name: fcg-notifications-worker
+    container_name: fcg-notifications-functions
     restart: on-failure
 
-    environment:
-      DOTNET_ENVIRONMENT: Development
+    ports:
+      - "7071:80"
 
-      RabbitMq__Host: rabbitmq
-      RabbitMq__Port: "5672"
-      RabbitMq__VirtualHost: "/"
-      RabbitMq__Username: rabbitmquser
-      RabbitMq__Password: "rbmq2587!@"
-      RabbitMq__UserCreatedQueue: notifications-user-created
-      RabbitMq__PaymentProcessedQueue: notifications-payment-processed
+    environment:
+      FUNCTIONS_WORKER_RUNTIME: "dotnet-isolated"
+
+      AzureFunctionsJobHost__Logging__Console__IsEnabled: "true"
+
+      # Azure Storage local via Azurite
+      AzureWebJobsStorage: "DefaultEndpointsProtocol=http;AccountName=devstoreaccount1;AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;BlobEndpoint=http://azurite:10000/devstoreaccount1;QueueEndpoint=http://azurite:10001/devstoreaccount1;TableEndpoint=http://azurite:10002/devstoreaccount1;"
 
     depends_on:
-      rabbitmq:
-        condition: service_healthy
-
-  rabbitmq:
-    image: rabbitmq:3-management
-    container_name: fcg-rabbitmq
-    restart: unless-stopped
-
-    environment:
-      RABBITMQ_DEFAULT_USER: rabbitmquser
-      RABBITMQ_DEFAULT_PASS: "rbmq2587!@"
-
-    ports:
-      - "5672:5672"
-      - "15672:15672"
-
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "rabbitmq-diagnostics",
-          "-q",
-          "ping"
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 20s
+      azurite:
+        condition: service_started

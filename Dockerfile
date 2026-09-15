@@ -1,35 +1,38 @@
-FROM mcr.microsoft.com/dotnet/runtime:8.0 AS base
-
-WORKDIR /app
-
-
+# ============================================================
+# BUILD
+# ============================================================
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 
 WORKDIR /src
 
 COPY ["NuGet.config", "./"]
 
-COPY ["src/FCG.Notifications.Worker/FCG.Notifications.Worker.csproj", "src/FCG.Notifications.Worker/"]
+COPY ["src/FCG.Notifications.Functions/FCG_Notifications_Functions.csproj", "src/FCG.Notifications.Functions/"]
 COPY ["src/FCG.Notifications.Application/FCG.Notifications.Application.csproj", "src/FCG.Notifications.Application/"]
 COPY ["src/FCG.Notifications.Domain/FCG.Notifications.Domain.csproj", "src/FCG.Notifications.Domain/"]
 COPY ["src/FCG.Notifications.Infrastructure/FCG.Notifications.Infrastructure.csproj", "src/FCG.Notifications.Infrastructure/"]
 
-RUN dotnet restore "src/FCG.Notifications.Worker/FCG.Notifications.Worker.csproj" \
+RUN dotnet restore \
+    "src/FCG.Notifications.Functions/FCG_Notifications_Functions.csproj" \
     --configfile "/src/NuGet.config"
 
 COPY . .
 
-RUN dotnet publish "src/FCG.Notifications.Worker/FCG.Notifications.Worker.csproj" \
+RUN dotnet publish \
+    "src/FCG.Notifications.Functions/FCG_Notifications_Functions.csproj" \
     -c Release \
-    -o /app/publish \
-    --no-restore \
-    /p:UseAppHost=false
+    -o /home/site/wwwroot \
+    --no-restore
 
 
-FROM base AS final
+# ============================================================
+# AZURE FUNCTIONS RUNTIME
+# ============================================================
+FROM mcr.microsoft.com/azure-functions/dotnet-isolated:4-dotnet-isolated8.0
 
-WORKDIR /app
+WORKDIR /home/site/wwwroot
 
-COPY --from=build /app/publish .
+COPY --from=build /home/site/wwwroot .
 
-ENTRYPOINT ["dotnet", "FCG.Notifications.Worker.dll"]
+ENV AzureWebJobsScriptRoot=/home/site/wwwroot \
+    AzureFunctionsJobHost__Logging__Console__IsEnabled=true

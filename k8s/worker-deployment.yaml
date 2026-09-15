@@ -1,46 +1,36 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: fcg-notifications-worker
+  name: fcg-notifications-functions
   namespace: fcg
   labels:
-    app: fcg-notifications-worker
+    app: fcg-notifications-functions
 spec:
   replicas: 1
 
   selector:
     matchLabels:
-      app: fcg-notifications-worker
+      app: fcg-notifications-functions
 
   template:
     metadata:
       labels:
-        app: fcg-notifications-worker
+        app: fcg-notifications-functions
 
     spec:
-      initContainers:
-        - name: wait-for-rabbitmq
-          image: busybox:1.36
-          command:
-            - sh
-            - -c
-            - |
-              until nc -z rabbitmq 5672; do
-                echo "Aguardando RabbitMQ..."
-                sleep 5
-              done
-
       containers:
-        - name: fcg-notifications-worker
-          image: brnmatos/fcg-notifications-worker:1.0.0
+        - name: fcg-notifications-functions
+          image: brnmatos/fcg-notifications-functions:1.0.0
           imagePullPolicy: IfNotPresent
+
+          ports:
+            - name: http
+              containerPort: 80
+              protocol: TCP
 
           envFrom:
             - configMapRef:
                 name: fcg-notifications-config
-
-            - secretRef:
-                name: fcg-notifications-secret
 
           resources:
             requests:
@@ -50,3 +40,16 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: fcg-notifications-functions
+  namespace: fcg
+spec:
+  selector:
+    app: fcg-notifications-functions
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
