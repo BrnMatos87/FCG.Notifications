@@ -20,11 +20,19 @@ A aplicação usa Azure Functions v4, .NET 8 Isolated e HTTP Trigger. Não possu
 
 Os contratos `UserCreatedEvent` e `PaymentProcessedEvent` continuam sendo usados como payloads JSON para preservar os dados necessários, mas o transporte até Notifications é HTTP.
 
-## Decisão em relação à Fase 3
+O envio atual é simulado por `ConsoleEmailSender`: a Function valida e processa a
+notificação, mas ainda não está integrada a um provedor externo de e-mail, como
+Azure Communication Services, SendGrid ou SMTP.
 
-O requisito central de executar Notifications como solução serverless e manter seu código/IaC no próprio repositório é atendido com Azure Functions e Terraform.
+## Papel na Fase 4
 
-O documento da Fase 3 sugere disparo direto pela mensageria. A implementação aprovada para este projeto substitui especificamente esse disparo por HTTP Trigger: Users e Payments possuem métodos POST equivalentes aos eventos anteriores. RabbitMQ continua existindo somente nos demais fluxos da solução.
+Notifications amplia a solução entregue na Fase 4, mas não faz parte do escopo
+mínimo de pipeline, que exige Users e Catalog. O componente permanece serverless,
+com código e infraestrutura no próprio repositório.
+
+A integração aprovada usa HTTP Trigger: Users e Payments enviam os contratos para
+os endpoints da Function. RabbitMQ continua existindo somente no fluxo assíncrono
+de compra entre Catalog e Payments.
 
 ## Endpoints
 
@@ -55,7 +63,8 @@ FCG.Notifications/
 |       `-- FCG_Notifications_Functions.csproj
 |-- tests/
 |-- terraform/
-|-- k8s/                 # alternativa local, não é o deploy oficial da Fase 3
+|-- .github/workflows/   # validação da aplicação e do Terraform
+|-- k8s/README.md        # esclarece que não existe Deployment no AKS
 |-- Dockerfile
 |-- docker-compose.full.yml
 `-- README.md
@@ -90,11 +99,11 @@ No ambiente local, a Function Key pode estar vazia conforme o runtime/configura�
 
 ## Docker
 
-O container existe para desenvolvimento e testes locais da Function, não como destino oficial de produção da Fase 3.
+O container existe para desenvolvimento e testes locais da Function, não como destino oficial de produção da Fase 4.
 
 ```powershell
-docker build -f Dockerfile -t brnmatos/fcg-notifications-functions:1.0.0 .
-docker run -p 7071:80 brnmatos/fcg-notifications-functions:1.0.0
+docker build -f Dockerfile -t fcg-notifications-functions:latest .
+docker run -p 7071:80 fcg-notifications-functions:latest
 ```
 
 Ou:
@@ -122,11 +131,12 @@ Fluxo manual:
 
 ```powershell
 Set-Location terraform
+Copy-Item backend.hcl.example backend.hcl
 Copy-Item terraform.tfvars.example terraform.tfvars
-terraform init
+terraform init -backend-config=backend.hcl
 terraform validate
-terraform plan
-terraform apply
+terraform plan -out=main.tfplan
+terraform apply main.tfplan
 ```
 
 `terraform apply` cria recursos reais na assinatura Azure e nunca deve ser executado automaticamente sem revisão/autorização. Para remoção:
@@ -139,7 +149,8 @@ O provisionamento da infraestrutura e a publicação do código são etapas sepa
 
 ## Kubernetes
 
-Os arquivos em `k8s/` executam a imagem da Function em container e podem ser usados apenas como alternativa local ou demonstração técnica. Eles não representam o destino serverless oficial da Fase 3 e não são incluídos pelo `FCG.Orchestration`.
+A pasta `k8s/` contém somente um README. Os manifests antigos foram removidos
+para evitar dois destinos de produção concorrentes.
 
 Na arquitetura oficial:
 
@@ -167,7 +178,12 @@ Não coloque Function Keys em ConfigMaps, arquivos `appsettings` versionados ou 
 
 ## Observabilidade
 
-Application Insights e Log Analytics recebem os logs e telemetria da Function. A stack Prometheus/Grafana exigida na Opção A da Fase 3 coleta obrigatoriamente Users e Catalog e é provisionada pelo Orchestration.
+Application Insights e Log Analytics recebem os logs e telemetria da Function.
+Como o envio ainda é simulado, o `ConsoleEmailSender` registra destinatário,
+assunto e corpo para permitir a conferência da notificação durante a apresentação.
+Esses dados também ficam disponíveis no Application Insights; em um ambiente real,
+esse log deve ser reduzido ou protegido por políticas apropriadas. Prometheus e
+Grafana continuam responsáveis por Users e Catalog no AKS.
 
 ## Segurança
 
@@ -175,7 +191,21 @@ Application Insights e Log Analytics recebem os logs e telemetria da Function. A
 - secrets reais fora do Git;
 - Storage Account com acesso seguro configurado pelo Terraform;
 - logs sem exposição de credenciais;
+- conteúdo completo do e-mail somente no log de simulação do `ConsoleEmailSender`;
 - infraestrutura serverless isolada dos demais serviços.
+
+## CI da Fase 4
+
+O workflow `.github/workflows/notifications-ci.yml` executa em pushes e pull
+requests para `fase4` e `main`:
+
+- restore e testes automatizados;
+- `dotnet publish` da Azure Function;
+- verificação de formatação e validação do Terraform sem acessar o backend.
+
+O deploy permanece manual e autorizado porque cria uma estrutura Azure separada
+do AKS. Depois do `terraform apply`, publique o pacote conforme as instruções de
+[`terraform/README.md`](./terraform/README.md).
 
 ## Fluxos de integração
 
