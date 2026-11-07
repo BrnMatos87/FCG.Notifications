@@ -56,6 +56,7 @@ jobs:
         with:
           name: notifications-function-package
           path: artifacts/publish
+          include-hidden-files: true
           if-no-files-found: error
           retention-days: 1
 
@@ -123,6 +124,12 @@ jobs:
         with:
           name: notifications-function-package
           path: artifacts/publish
+
+      - name: Validar estrutura do pacote
+        shell: bash
+        run: |
+          test -f artifacts/publish/host.json
+          test -d artifacts/publish/.azurefunctions
 
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v3
