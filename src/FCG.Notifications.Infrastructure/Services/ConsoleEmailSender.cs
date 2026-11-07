@@ -23,9 +23,19 @@ public class ConsoleEmailSender : IEmailSender
         CancellationToken ct = default)
     {
         _logger.LogInformation(
-            "E-mail simulado processado. Tipo: {NotificationType}, CorrelationId: {CorrelationId}",
+            """
+            E-mail simulado enviado.
+            Tipo: {NotificationType}
+            Para: {To}
+            Assunto: {Subject}
+            CorrelationId: {CorrelationId}
+            Corpo: {Body}
+            """,
             notificationType,
-            correlationId);
+            to,
+            subject,
+            correlationId,
+            body);
 
         return Task.CompletedTask;
     }

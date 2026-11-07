@@ -179,9 +179,11 @@ Não coloque Function Keys em ConfigMaps, arquivos `appsettings` versionados ou 
 ## Observabilidade
 
 Application Insights e Log Analytics recebem os logs e telemetria da Function.
-Os logs registram IDs técnicos e `CorrelationId`, sem endereço de e-mail ou corpo
-da mensagem. Prometheus e Grafana continuam responsáveis por Users e Catalog no
-AKS.
+Como o envio ainda é simulado, o `ConsoleEmailSender` registra destinatário,
+assunto e corpo para permitir a conferência da notificação durante a apresentação.
+Esses dados também ficam disponíveis no Application Insights; em um ambiente real,
+esse log deve ser reduzido ou protegido por políticas apropriadas. Prometheus e
+Grafana continuam responsáveis por Users e Catalog no AKS.
 
 ## Segurança
 
@@ -189,7 +191,7 @@ AKS.
 - secrets reais fora do Git;
 - Storage Account com acesso seguro configurado pelo Terraform;
 - logs sem exposição de credenciais;
-- logs sem endereço de e-mail ou conteúdo da notificação;
+- conteúdo completo do e-mail somente no log de simulação do `ConsoleEmailSender`;
 - infraestrutura serverless isolada dos demais serviços.
 
 ## CI da Fase 4
