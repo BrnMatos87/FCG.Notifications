@@ -79,7 +79,10 @@ terraform plan -out main.tfplan
 terraform apply main.tfplan
 ```
 
-> `terraform apply` cria recursos reais e gera custos na assinatura Azure. Revise o plano e execute o comando somente de forma manual e autorizada. Nenhum script deste repositório executa `apply` automaticamente.
+> `terraform apply` cria recursos reais e gera custos na assinatura Azure. Na
+> primeira implantação, revise e aplique o plano localmente. Depois do bootstrap
+> OIDC, o workflow executa o mesmo ciclo na `main`, protegido pelo GitHub
+> Environment `production`.
 
 Consulte as URLs criadas com:
 
@@ -101,7 +104,8 @@ Outputs disponíveis:
 
 ## Publicação do código
 
-O Terraform provisiona a infraestrutura, mas não publica o código. Depois do `terraform apply`, execute na raiz do repositório:
+Na primeira implantação manual, o Terraform provisiona a infraestrutura, mas não
+publica o código. Depois do `terraform apply`, execute na raiz do repositório:
 
 ```powershell
 dotnet publish `
@@ -144,5 +148,6 @@ terraform destroy
 
 O state pode conter valores sensíveis gerados pela Azure, como a chave da
 Storage Account. `backend.hcl`, `terraform.tfvars`, planos e arquivos de state são
-ignorados pelo Git. O pipeline executa `terraform init -backend=false` apenas para
-validar a configuração, sem ler ou modificar o state remoto.
+ignorados pelo Git. O job de validação executa `terraform init -backend=false`. O
+job de deploy, restrito à `main`, usa OIDC e o backend remoto para gerar e aplicar
+um plano antes da publicação da Function.

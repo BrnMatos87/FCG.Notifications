@@ -194,7 +194,7 @@ Grafana continuam responsáveis por Users e Catalog no AKS.
 - conteúdo completo do e-mail somente no log de simulação do `ConsoleEmailSender`;
 - infraestrutura serverless isolada dos demais serviços.
 
-## CI da Fase 4
+## CI/CD da Fase 4
 
 O workflow `.github/workflows/notifications-ci.yml` executa em pushes e pull
 requests para `fase4` e `main`:
@@ -203,9 +203,17 @@ requests para `fase4` e `main`:
 - `dotnet publish` da Azure Function;
 - verificação de formatação e validação do Terraform sem acessar o backend.
 
-O deploy permanece manual e autorizado porque cria uma estrutura Azure separada
-do AKS. Depois do `terraform apply`, publique o pacote conforme as instruções de
-[`terraform/README.md`](./terraform/README.md).
+Em pushes para `main`, depois dessas validações, o job de deploy:
+
+- autentica na Azure por OIDC, sem senha de Service Principal;
+- gera e aplica um plano usando o state remoto;
+- publica o pacote validado na Azure Function Flex Consumption;
+- confirma que as duas Functions foram descobertas pelo runtime.
+
+O job usa o GitHub Environment `production`, que deve exigir aprovação manual, e
+os secrets `AZURE_CLIENT_ID`, `AZURE_TENANT_ID` e `AZURE_SUBSCRIPTION_ID`. A
+identidade OIDC e suas permissões limitadas são provisionadas pelo Terraform do
+repositório `FCG.Orchestration`.
 
 ## Fluxos de integração
 

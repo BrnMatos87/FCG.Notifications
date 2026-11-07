@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: notifications-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 env:
   DOTNET_VERSION: 8.0.x
@@ -51,6 +51,14 @@ jobs:
           --no-restore
           --output artifacts/publish
 
+      - name: Armazenar pacote da Azure Function
+        uses: actions/upload-artifact@v4
+        with:
+          name: notifications-function-package
+          path: artifacts/publish
+          if-no-files-found: error
+          retention-days: 1
+
   terraform:
     name: Validar Terraform
     runs-on: ubuntu-latest
@@ -76,3 +84,92 @@ jobs:
 
       - name: Validar configuração
         run: terraform validate
+
+  deploy:
+    name: Aplicar Terraform e publicar Function
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs:
+      - application
+      - terraform
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+      url: https://fcg-notifications-dev-001.azurewebsites.net
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ARM_USE_OIDC: true
+      ARM_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+      ARM_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+      ARM_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_subscription_id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+      TF_VAR_resource_group_name: fcg-notifications-dev-rg
+      TF_VAR_location: brazilsouth
+      TF_VAR_function_app_name: fcg-notifications-dev-001
+      TF_VAR_storage_account_name: fcgnotifdev001
+      TF_VAR_log_analytics_daily_quota_gb: 0.1
+      TF_VAR_application_insights_daily_data_cap_in_gb: 0.1
+      TF_VAR_instance_memory_in_mb: 512
+      TF_VAR_maximum_instance_count: 2
+      TF_VAR_tags: '{"environment":"development","project":"FIAPCloudGames"}'
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Baixar pacote validado
+        uses: actions/download-artifact@v4
+        with:
+          name: notifications-function-package
+          path: artifacts/publish
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Autenticar no Azure com OIDC
+        uses: azure/login@v3
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Inicializar state remoto
+        working-directory: terraform
+        run: |
+          terraform init -input=false \
+            -backend-config="resource_group_name=rg-fcg-tfstate" \
+            -backend-config="storage_account_name=stfcgtfstatea453974d" \
+            -backend-config="container_name=tfstate" \
+            -backend-config="key=fcg-notifications-phase4.tfstate" \
+            -backend-config="use_azuread_auth=true"
+
+      - name: Gerar plano de infraestrutura
+        working-directory: terraform
+        run: terraform plan -input=false -out=main.tfplan
+
+      - name: Aplicar plano de infraestrutura
+        working-directory: terraform
+        run: terraform apply -input=false main.tfplan
+
+      - name: Publicar na Azure Function
+        uses: Azure/functions-action@v1
+        with:
+          app-name: fcg-notifications-dev-001
+          package: artifacts/publish
+
+      - name: Confirmar Functions publicadas
+        shell: bash
+        run: |
+          function_count=$(az functionapp function list \
+            --resource-group fcg-notifications-dev-rg \
+            --name fcg-notifications-dev-001 \
+            --query "length(@)" \
+            --output tsv)
+
+          if [ "${function_count}" -ne 2 ]; then
+            echo "Esperadas 2 Functions, encontradas ${function_count}."
+            exit 1
+          fi
