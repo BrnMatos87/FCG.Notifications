@@ -2,6 +2,7 @@
 using FCG.BuildingBlocks.Events;
 using FCG.Notifications.Application.Abstractions.Commands;
 using FCG.Notifications.Application.Commands.Notifications;
+using FCG.Notifications.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -59,20 +60,31 @@ public class UserCreatedFunction
         }
 
         _logger.LogInformation(
-            "Notificação de usuário recebida. UserId: {UserId}, Email: {Email}, CorrelationId: {CorrelationId}",
+            "Notificação de usuário recebida. UserId: {UserId}, CorrelationId: {CorrelationId}",
             userCreatedEvent.UserId,
-            userCreatedEvent.Email,
             userCreatedEvent.CorrelationId);
 
-        await _handler.HandleAsync(
-            new SendWelcomeEmailCommand
-            {
-                UserId = userCreatedEvent.UserId,
-                Name = userCreatedEvent.Name,
-                Email = userCreatedEvent.Email,
-                CorrelationId = userCreatedEvent.CorrelationId
-            },
-            context.CancellationToken);
+        try
+        {
+            await _handler.HandleAsync(
+                new SendWelcomeEmailCommand
+                {
+                    UserId = userCreatedEvent.UserId,
+                    Name = userCreatedEvent.Name,
+                    Email = userCreatedEvent.Email,
+                    CorrelationId = userCreatedEvent.CorrelationId
+                },
+                context.CancellationToken);
+        }
+        catch (DomainException exception)
+        {
+            _logger.LogWarning(
+                "Notificação de usuário rejeitada por dados inválidos. UserId: {UserId}, CorrelationId: {CorrelationId}",
+                userCreatedEvent.UserId,
+                userCreatedEvent.CorrelationId);
+
+            return new BadRequestObjectResult(exception.Message);
+        }
 
         return new NoContentResult();
     }

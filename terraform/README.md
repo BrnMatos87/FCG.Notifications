@@ -30,6 +30,20 @@ Não são provisionados recursos dos demais serviços da solução, AKS, RabbitM
 - uma assinatura Azure com permissão para criar os recursos
 - provider `Microsoft.Web` registrado na assinatura
 
+## Estado remoto
+
+O state usa o mesmo Azure Storage criado para o Terraform do Orchestration, mas
+em um blob independente:
+
+```text
+Container: tfstate
+Key:       fcg-notifications-phase4.tfstate
+```
+
+O backend não armazena dados da aplicação. Ele mantém o vínculo entre esta
+configuração e os recursos da Function, permitindo execução por outro
+colaborador e bloqueio contra alterações simultâneas.
+
 Descubra o SubscriptionId:
 ```powershell
 az account list --output table
@@ -43,9 +57,10 @@ az account set --subscription "<SUBSCRIPTION_ID>"
 
 ## Configuração
 
-Copie o arquivo de exemplo e substitua somente os placeholders:
+Copie os arquivos de exemplo e substitua somente os placeholders:
 
 ```powershell
+Copy-Item backend.hcl.example backend.hcl
 Copy-Item terraform.tfvars.example terraform.tfvars
 ```
 
@@ -58,7 +73,7 @@ Os limites podem ser ajustados pelas variáveis `log_analytics_daily_quota_gb`, 
 Execute os comandos a partir deste diretório:
 
 ```powershell
-terraform init
+terraform init -backend-config=backend.hcl
 terraform validate
 terraform plan -out main.tfplan
 terraform apply main.tfplan
@@ -125,6 +140,9 @@ Ou, diretamente:
 terraform destroy
 ```
 
-## Estado Terraform
+## Arquivos locais sensíveis
 
-O state local pode conter valores sensíveis gerados pela Azure, como a chave da Storage Account. Os arquivos de state e `terraform.tfvars` são ignorados pelo Git. Em um pipeline compartilhado, use um backend remoto protegido e criado fora desta configuração para evitar dependência circular durante o `terraform init`.
+O state pode conter valores sensíveis gerados pela Azure, como a chave da
+Storage Account. `backend.hcl`, `terraform.tfvars`, planos e arquivos de state são
+ignorados pelo Git. O pipeline executa `terraform init -backend=false` apenas para
+validar a configuração, sem ler ou modificar o state remoto.

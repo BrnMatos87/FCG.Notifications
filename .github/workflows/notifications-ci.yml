@@ -1,0 +1,78 @@
+name: Notifications - CI
+
+on:
+  push:
+    branches:
+      - fase4
+      - main
+  pull_request:
+    branches:
+      - fase4
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notifications-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_VERSION: 8.0.x
+  TERRAFORM_VERSION: 1.10.5
+  TEST_PROJECT: tests/FCG.Notifications.Tests/FCG.Notifications.Tests.csproj
+  FUNCTION_PROJECT: src/FCG.Notifications.Functions/FCG_Notifications_Functions.csproj
+
+jobs:
+  application:
+    name: Testar e publicar pacote localmente
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Restaurar dependências
+        run: dotnet restore "${TEST_PROJECT}" --configfile NuGet.config
+
+      - name: Executar testes
+        run: dotnet test "${TEST_PROJECT}" --configuration Release --no-restore
+
+      - name: Validar pacote da Azure Function
+        run: >-
+          dotnet publish "${FUNCTION_PROJECT}"
+          --configuration Release
+          --no-restore
+          --output artifacts/publish
+
+  terraform:
+    name: Validar Terraform
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: terraform
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Verificar formatação
+        run: terraform fmt -check -recursive
+
+      - name: Inicializar sem backend
+        run: terraform init -backend=false -input=false
+
+      - name: Validar configuração
+        run: terraform validate

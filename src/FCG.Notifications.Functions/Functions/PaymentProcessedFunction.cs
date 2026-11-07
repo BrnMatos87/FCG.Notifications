@@ -3,6 +3,7 @@ using FCG.BuildingBlocks.Enums;
 using FCG.BuildingBlocks.Events;
 using FCG.Notifications.Application.Abstractions.Commands;
 using FCG.Notifications.Application.Commands.Notifications;
+using FCG.Notifications.Domain.Exceptions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Azure.Functions.Worker;
@@ -52,6 +53,7 @@ public class PaymentProcessedFunction
             paymentProcessedEvent.GameId == Guid.Empty ||
             string.IsNullOrWhiteSpace(paymentProcessedEvent.UserEmail) ||
             string.IsNullOrWhiteSpace(paymentProcessedEvent.GameTitle) ||
+            paymentProcessedEvent.Price <= 0 ||
             paymentProcessedEvent.CorrelationId == Guid.Empty ||
             !Enum.IsDefined(paymentProcessedEvent.Status))
         {
@@ -86,18 +88,30 @@ public class PaymentProcessedFunction
             paymentProcessedEvent.Status,
             paymentProcessedEvent.CorrelationId);
 
-        await _handler.HandleAsync(
-            new SendPurchaseConfirmationEmailCommand
-            {
-                OrderId = paymentProcessedEvent.OrderId,
-                UserId = paymentProcessedEvent.UserId,
-                GameId = paymentProcessedEvent.GameId,
-                UserEmail = paymentProcessedEvent.UserEmail,
-                GameTitle = paymentProcessedEvent.GameTitle,
-                Price = paymentProcessedEvent.Price,
-                CorrelationId = paymentProcessedEvent.CorrelationId
-            },
-            context.CancellationToken);
+        try
+        {
+            await _handler.HandleAsync(
+                new SendPurchaseConfirmationEmailCommand
+                {
+                    OrderId = paymentProcessedEvent.OrderId,
+                    UserId = paymentProcessedEvent.UserId,
+                    GameId = paymentProcessedEvent.GameId,
+                    UserEmail = paymentProcessedEvent.UserEmail,
+                    GameTitle = paymentProcessedEvent.GameTitle,
+                    Price = paymentProcessedEvent.Price,
+                    CorrelationId = paymentProcessedEvent.CorrelationId
+                },
+                context.CancellationToken);
+        }
+        catch (DomainException exception)
+        {
+            _logger.LogWarning(
+                "Notificação de pagamento rejeitada por dados inválidos. OrderId: {OrderId}, CorrelationId: {CorrelationId}",
+                paymentProcessedEvent.OrderId,
+                paymentProcessedEvent.CorrelationId);
+
+            return new BadRequestObjectResult(exception.Message);
+        }
 
         return new NoContentResult();
     }

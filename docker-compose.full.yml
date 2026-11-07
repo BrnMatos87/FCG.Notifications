@@ -25,7 +25,7 @@ services:
   # AZURE FUNCTIONS - NOTIFICATIONS
   # ============================================================
   notifications-functions:
-    image: brnmatos/fcg-notifications-functions:1.0.0
+    image: fcg-notifications-functions:latest
 
     build:
       context: .
